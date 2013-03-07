@@ -18,7 +18,7 @@
 // SUCH DAMAGE.
 //
 // Copyright (c) 2013 by Eric Helvey
-//
+// Copyright (c) 2000-2002,2010 by Solar Designer.
 
 class PasswordStrengthTest
 {
@@ -82,7 +82,7 @@ class PasswordStrengthTest
       $this->{$k} = $v;
     }
     include_once("wordset_4k.inc");
-    if(isset($this->debug) && $this->debug >= 4) {
+    if(isset($this->debug) && $this->debug >= 6) {
       $this->_passwdqc_wordset_4k = array_slice($_passwdqc_wordset_4k, 0, 10);
     } else {
       $this->_passwdqc_wordset_4k = $_passwdqc_wordset_4k;
@@ -92,7 +92,7 @@ class PasswordStrengthTest
 
 
   private function isAscii($str) {
-    if($this->debug >= 5) { print("Entering isAscii for $str<br>\n"); }
+    if($this->debug >= 6) { print("Entering isAscii for $str<br>\n"); }
     return mb_check_encoding($str, 'ASCII');
   }
 
@@ -168,6 +168,7 @@ class PasswordStrengthTest
     $digits = $lowers = $uppers = $others = $unknowns = 0;
     $p = ' ';
 
+
     foreach($this->mb_str_split($newpass) as $c) {
       $length++;
 
@@ -199,7 +200,8 @@ class PasswordStrengthTest
       $p = $c;
 
       /* Count this character just once: when we're not going to see it anymore */
-      if (!mb_strstr(mb_substr($newpass, $length), $c)) {
+      if (mb_strstr(mb_substr($newpass, $length), $c) === false) {
+        if($this->debug >= 5) { printf("Counting $c because it's not in %s<br>\n", mb_substr($newpass, $length)); }
         $chars++;
       }
     }
@@ -230,8 +232,9 @@ class PasswordStrengthTest
     if($others) { $classes++; }
     if($unknowns > 0 && $classes <= 1 && (($classes <= 0) || ($digits > 0) || ($words >= 2))) { $classes++; }
 
-    for($i = 0; $i < $classes; $i++) {
-      switch($classes) {
+    if($this->debug >= 5) { printf("classes: %d ; digits: %d ; lowers: %d ; uppers: %d ; others: %d ; unkonwns: %d ; words: %d ; chars: %d ; length: %d.<br>\n", $classes, $digits, $lowers, $uppers, $others, $unknowns, $words, $chars, $length); }
+    for($i = $classes; $i > 0; $i--) {
+      switch($i) {
         case 1:
           # Only one type of character.  If the min password size for a single
           # character class is not a number, then we're going to assume that
@@ -260,7 +263,7 @@ class PasswordStrengthTest
              && ($chars >= ($this->expected_different(36, $params["min"][1]) - 1))) {
             if($this->debug >= 3) { print("Returning FALSE from is_simple case 2a.<br>\n"); }
             return 0;
-          } elseif((!$params["passphrase_words"]) || ($words < $params["passphrase_words"])) {
+          } elseif(!isset($params["passphrase_words"]) || (!$params["passphrase_words"]) || ($words < $params["passphrase_words"])) {
             continue;
           } elseif(   (($length + ($bias > 0 ? $bias : 0)) >= $params["min"][2])
                    && ($chars >= ($this->expected_different(27, $params["min"][2]) - 1))) {
@@ -308,6 +311,7 @@ class PasswordStrengthTest
   {
     if($this->debug >= 4) { print("Entering unify for $src<br>\n"); }
 
+    $src = mb_strtolower($src);
     foreach($this->mb_str_split($src) as $c) {
       $unique_chars[$c] = true;
     }
@@ -319,10 +323,6 @@ class PasswordStrengthTest
 
     foreach(array_keys($unique_chars) as $c) {
       if($this->debug >= 5) { print("Character: $c<br>\n"); }
-
-      if($this->isAscii($c) && ctype_upper($c)) {
-        $c = mb_strtolower($c);
-      }
 
       switch($c) {
         case 'a':
@@ -365,7 +365,7 @@ class PasswordStrengthTest
         case 't':
         case '+':
           $froms[] = "[t\+]";
-          $tos[] = "4";
+          $tos[] = "7";
           break;
       }
     }
@@ -417,10 +417,10 @@ class PasswordStrengthTest
     $length = mb_strlen($needle);
     $spin_on_haystack = true;
 
-    for($i = 0; $i < ($length - $params["match"]); $i++) {
+    for($i = 0; $i <= ($length - $params["match"]); $i++) {
       if($this->debug >= 5) { print("i - $i<br>\n"); }
-      for($j = $params["match"]; ($i + $j) < $length; $j++) {
-        if($this->debug >= 5) { print("j - $j<br>\n"); }
+      for($j = $params["match"]; ($i + $j) <= $length; $j++) {
+        if($this->debug >= 5) { print("j - $j - ($i + $j) <= $length<br>\n"); }
         $bias = 0;
         $j1 = $j - 1;
 
@@ -482,7 +482,7 @@ class PasswordStrengthTest
                 }
 
                 foreach($this->mb_str_split(mb_substr($original, $pos, ($end - $pos))) as $c) {
-                  if(ctype_alpha($c)) {
+                  if(!ctype_alpha($c)) {
                     if($j == $params["match"]) {
                       if($this->debug >= 5) { print("Found smallest substring match<Br>\n"); }
 
@@ -501,9 +501,11 @@ class PasswordStrengthTest
               /* discount j - (match_length + bias) chars */
               $bias += $params["match"] - $j;
               /* bias <= -1 */
+              if($this->debug >= 5) { print("Checking bias ($bias) versus worst bias ($worst_bias).<Br>\n"); }
               if($bias < $worst_bias) {
                 if($this->is_simple($params, $original, $bias)) {
                   if($this->debug >= 3) { print("Returning TRUE from is_based<br>\n"); }
+                  return 1;
                 } else {
                   $worst_bias = $bias;
                 }
@@ -513,6 +515,7 @@ class PasswordStrengthTest
         }
         if(!$bias) {
           # Break out of the j loop
+          if($this->debug >= 5) { print("Breaking out of the j loop.<Br>\n"); }
           break;
         }
       }
@@ -750,8 +753,10 @@ class PasswordStrengthTest
 
     if($this->debug >= 5) { print("About to check if new is based on a word list entry.<br>\n"); }
     if(!$done) {
+      if($this->debug >= 5) { print("Checking $u_newpass forward.<br>\n"); }
       $reason = $this->is_word_based($params, $u_newpass, $newpass, 0);
       if(!$reason) {
+        if($this->debug >= 5) { print("Checking $u_reversed backwards.<br>\n"); }
         $reason = $this->is_word_based($params, $u_reversed, $newpass, 0x100);
       }
       if($reason) {
